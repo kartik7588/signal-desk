@@ -1,0 +1,21 @@
+# Local design and review artifacts
+.impeccable/
+regions.json
+
+# Vercel local project metadata
+.vercel/
+
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+
+# Environment files and local secrets
+.env
+.env.*
+!.env.example
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+*.log

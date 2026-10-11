@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#8ca087">
+  <meta name="description" content="Signal Desk — a private, local password vault.">
+  <title>Signal Desk</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to vault</a>
+
+  <section id="gate" class="gate" aria-labelledby="gate-title">
+    <div class="gate__plate">
+      <div class="brand-block">
+        <h1 id="gate-title">Signal Desk</h1>
+        <p>Private password vault</p>
+      </div>
+      <div class="local-mark"><span class="lamp" aria-hidden="true"></span><span>Local only<br>Your data stays here</span></div>
+      <form id="gate-form" class="gate__form">
+        <label for="master-password" id="master-label">Master password</label>
+        <div class="input-row">
+          <input id="master-password" type="password" minlength="12" autocomplete="current-password" required>
+          <button class="round-control" id="toggle-master" type="button" aria-label="Show master password">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+          </button>
+        </div>
+        <label id="confirm-master-label" for="confirm-master-password">Confirm master password</label>
+        <input id="confirm-master-password" class="master-confirm" type="password" minlength="12" autocomplete="new-password" required>
+        <p id="gate-help" class="gate__help">Use at least 12 characters. This password cannot be recovered.</p>
+        <p id="gate-error" class="message message--error" role="alert" hidden></p>
+        <button id="gate-submit" class="primary-action" type="submit">Create vault</button>
+        <button id="import-at-gate" class="text-action" type="button">Restore encrypted backup</button>
+      </form>
+    </div>
+  </section>
+
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <div class="brand-block brand-block--compact">
+        <h1>Signal Desk</h1>
+        <p>Private password vault</p>
+      </div>
+      <div class="local-mark"><span class="lamp lamp--live" aria-hidden="true"></span><span>Local only<br>Your data stays here</span></div>
+      <div class="topbar__actions">
+        <span class="security-state"><span aria-hidden="true">●</span> Vault open</span>
+        <button id="add-entry" class="round-control" type="button" aria-label="Add account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button id="lock-vault" class="round-control" type="button" aria-label="Lock vault">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="search-instrument" aria-label="Search vault">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+        <label class="visually-hidden" for="search">Search accounts</label>
+        <input id="search" type="search" placeholder="Search accounts" autocomplete="off" spellcheck="false">
+        <button id="clear-search" class="round-control round-control--small" type="button" aria-label="Clear search" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
+        </button>
+        <span id="result-count" class="result-count" aria-live="polite">0 accounts</span>
+      </section>
+                                      
+      <div class="workspace">
+        <section class="result-panel" aria-labelledby="result-title">
+          <div class="result-panel__head">
+            <h2 id="result-title">Accounts</h2>
+            <span id="result-context">Ready</span>
+          </div>
+          <div id="empty-state" class="empty-state">
+            <p class="empty-state__title">No accounts connected yet.</p>
+            <p>Add your first login, then search by service, domain, email, or tag.</p>
+            <button id="empty-add" class="secondary-action" type="button">Add first account</button>
+          </div>
+          <ol id="results" class="results" aria-label="Credential results"></ol>
+          <div class="result-panel__footer">
+            <button id="add-entry-secondary" class="text-action" type="button">+ Add account</button>
+            <button id="settings-button" class="text-action" type="button">Vault settings</button>
+          </div>
+        </section>
+
+        <div class="route" aria-hidden="true"><span></span></div>
+
+        <section id="detail-panel" class="detail-panel" aria-labelledby="detail-title">
+          <div id="detail-empty" class="detail-empty">
+            <span class="detail-empty__dial" aria-hidden="true"></span>
+            <h2>Select an account</h2>
+            <p>Choose a result to inspect and copy its credentials.</p>
+          </div>
+          <div id="detail-content" hidden>
+            <div class="identity-plate">
+              <span id="detail-monogram" class="monogram" aria-hidden="true"></span>
+              <div><h2 id="detail-title"></h2><p id="detail-domain"></p></div>
+              <button id="open-site" class="round-control round-control--small" type="button" aria-label="Open website">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8"/><path d="M17 12v6a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h6"/></svg>
+              </button>
+            </div>
+
+            <div class="credential-field">
+              <span>Email / username</span>
+              <output id="detail-username"></output>
+              <button class="round-control round-control--small copy-control" data-copy="username" type="button" aria-label="Copy username">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+              </button>
+            </div>
+
+            <div class="credential-field">
+              <span>Password</span>
+              <output id="detail-password" aria-live="polite"></output>
+              <button id="reveal-password" class="round-control round-control--small" type="button" aria-label="Reveal password">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+              </button>
+              <button class="round-control round-control--small copy-control" data-copy="password" type="button" aria-label="Copy password">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+              </button>
+            </div>
+
+            <dl class="metadata">
+              <div><dt>Website</dt><dd><a id="detail-url" target="_blank" rel="noopener noreferrer"></a></dd></div>
+              <div><dt>Tags</dt><dd id="detail-tags"></dd></div>
+              <div><dt>Notes</dt><dd id="detail-notes"></dd></div>
+              <div><dt>Updated</dt><dd id="detail-updated"></dd></div>
+            </dl>
+
+            <div class="detail-actions">
+              <button id="back-results" class="secondary-action mobile-only" type="button">Back to results</button>
+              <button id="edit-entry" class="secondary-action" type="button">Edit account</button>
+              <button id="delete-entry" class="danger-action" type="button">Delete</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="footer-rail"><span>Find</span><span>Access</span><span>Continue</span><span>Signal Desk · local vault</span></footer>
+  </div>
+
+  <dialog id="entry-dialog" class="sheet">
+    <form id="entry-form" method="dialog">
+      <div class="sheet__head"><h2 id="entry-dialog-title">Add account</h2><button class="round-control round-control--small" value="cancel" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button></div>
+      <input id="entry-id" type="hidden">
+      <label>Service name<input id="entry-service" required autocomplete="off"></label>
+      <label>Website<input id="entry-url" type="url" placeholder="https://example.com" autocomplete="url"></label>
+      <label>Email or username<input id="entry-username" required autocomplete="username"></label>
+      <label>Password
+        <span class="password-editor"><input id="entry-password" type="password" required autocomplete="new-password"><button id="generate-password" class="text-action" type="button">Generate</button></span>
+      </label>
+      <label>Tags<input id="entry-tags" placeholder="work, ai"></label>
+      <label>Notes<textarea id="entry-notes" rows="3"></textarea></label>
+      <p id="entry-error" class="message message--error" role="alert" hidden></p>
+      <div class="sheet__actions"><button class="text-action" value="cancel">Cancel</button><button id="save-entry" class="primary-action" value="default">Save account</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="settings-dialog" class="sheet sheet--narrow">
+    <form method="dialog">
+      <div class="sheet__head"><h2>Vault settings</h2><button class="round-control round-control--small" value="cancel" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button></div>
+      <label>Auto-lock after
+        <select id="auto-lock-minutes"><option value="1">1 minute</option><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="30">30 minutes</option></select>
+      </label>
+      <button id="export-backup" class="secondary-action" type="button">Export encrypted backup</button>
+      <button id="import-backup" class="secondary-action" type="button">Restore encrypted backup</button>
+      <p class="gate__help">Backups remain encrypted with your current master password.</p>
+    </form>
+  </dialog>
+
+  <input id="backup-file" type="file" accept="application/json,.signaldesk" hidden>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
