@@ -31,6 +31,7 @@
         <p id="gate-help" class="gate__help">Use at least 12 characters. This password cannot be recovered.</p>
         <p id="gate-error" class="message message--error" role="alert" hidden></p>
         <button id="gate-submit" class="primary-action" type="submit">Create vault</button>
+        <button id="sync-at-gate" class="secondary-action" type="button">Open a synced vault</button>
         <button id="import-at-gate" class="text-action" type="button">Restore encrypted backup</button>
       </form>
     </div>
@@ -42,7 +43,7 @@
         <h1>Signal Desk</h1>
         <p>Private password vault</p>
       </div>
-      <div class="local-mark"><span class="lamp lamp--live" aria-hidden="true"></span><span>Local only<br>Your data stays here</span></div>
+      <button id="sync-status-button" class="local-mark local-mark--button" type="button" aria-label="Open encrypted sync settings"><span id="sync-lamp" class="lamp lamp--live" aria-hidden="true"></span><span id="sync-mark-text">Local only<br>Encrypted on this device</span></button>
       <div class="topbar__actions">
         <span class="security-state"><span aria-hidden="true">●</span> Vault open</span>
         <button id="add-entry" class="round-control" type="button" aria-label="Add account">
@@ -164,8 +165,49 @@
       </label>
       <button id="export-backup" class="secondary-action" type="button">Export encrypted backup</button>
       <button id="import-backup" class="secondary-action" type="button">Restore encrypted backup</button>
+      <button id="open-sync-settings" class="secondary-action" type="button">Encrypted sync</button>
       <p class="gate__help">Backups remain encrypted with your current master password.</p>
     </form>
+  </dialog>
+
+  <dialog id="sync-dialog" class="sheet sheet--narrow">
+    <div class="sync-panel">
+      <div class="sheet__head"><h2>Encrypted sync</h2><button id="close-sync" class="round-control round-control--small" type="button" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button></div>
+      <div class="sync-state" aria-live="polite">
+        <span id="sync-state-lamp" class="lamp" aria-hidden="true"></span>
+        <div><strong id="sync-state-title">Checking sync</strong><p id="sync-state-detail">Your local vault remains available.</p></div>
+      </div>
+
+      <form id="sync-auth-form" class="sync-form">
+        <p class="gate__help">Your sync account password signs you in. It is separate from the master password that encrypts your vault.</p>
+        <label>Email address<input id="sync-email" type="email" maxlength="254" autocomplete="email" required></label>
+        <label>Sync account password<input id="sync-password" type="password" minlength="12" maxlength="128" autocomplete="current-password" required></label>
+        <p id="sync-auth-message" class="message message--error" role="alert" hidden></p>
+        <div class="sync-actions">
+          <button id="sync-login" class="primary-action" type="submit">Sign in</button>
+          <button id="sync-signup" class="secondary-action" type="button">Create sync account</button>
+        </div>
+      </form>
+
+      <div id="sync-controls" class="sync-controls" hidden>
+        <p>Signed in as <strong id="sync-account-email"></strong></p>
+        <p id="sync-last-update" class="gate__help">The cloud stores only encrypted vault data.</p>
+        <div class="sync-actions">
+          <button id="sync-now" class="primary-action" type="button">Sync now</button>
+          <button id="sync-signout" class="text-action" type="button">Sign out</button>
+        </div>
+      </div>
+
+      <div id="sync-conflict" class="sync-conflict" hidden>
+        <strong>Two encrypted copies differ.</strong>
+        <p>Choose which copy should become current. This action cannot merge individual changes.</p>
+        <div class="sync-actions sync-actions--stack">
+          <button id="use-cloud-copy" class="primary-action" type="button">Use cloud copy</button>
+          <button id="keep-browser-copy" class="secondary-action" type="button">Keep this browser copy</button>
+          <button id="cancel-conflict" class="text-action" type="button">Decide later</button>
+        </div>
+      </div>
+    </div>
   </dialog>
 
   <input id="backup-file" type="file" accept="application/json,.signaldesk" hidden>

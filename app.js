@@ -19,7 +19,8 @@ const state = {
   revealTimer: null,
   lockTimer: null,
   toastTimer: null,
-  lastActivity: Date.now()
+  lastActivity: Date.now(),
+  sync: { authenticated: false, email: "", revision: 0, remote: null, busy: false, queue: Promise.resolve() }
 };
 
 const els = {
@@ -31,7 +32,8 @@ const els = {
   detailContent: $("#detail-content"), detailTitle: $("#detail-title"), detailDomain: $("#detail-domain"),
   detailMonogram: $("#detail-monogram"), detailUsername: $("#detail-username"), detailPassword: $("#detail-password"),
   detailUrl: $("#detail-url"), detailTags: $("#detail-tags"), detailNotes: $("#detail-notes"), detailUpdated: $("#detail-updated"),
-  entryDialog: $("#entry-dialog"), entryForm: $("#entry-form"), settingsDialog: $("#settings-dialog"), backupFile: $("#backup-file"),
+  entryDialog: $("#entry-dialog"), entryForm: $("#entry-form"), settingsDialog: $("#settings-dialog"), syncDialog: $("#sync-dialog"),
+  syncAuthForm: $("#sync-auth-form"), syncControls: $("#sync-controls"), syncConflict: $("#sync-conflict"), backupFile: $("#backup-file"),
   toast: $("#toast")
 };
 
@@ -133,6 +135,167 @@ async function persistVault() {
   const next = await encryptVault(state.vault, state.key, salt, state.envelope.kdf.iterations);
   await dbPut(next);
   state.envelope = next;
+  queueCloudUpload(next);
+}
+
+class ApiError extends Error {
+  constructor(message, status, data = {}) { super(message); this.status = status; this.data = data; }
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) }
+  });
+  let data = {};
+  try { data = await response.json(); } catch { /* Empty or non-JSON response. */ }
+  if (!response.ok) throw new ApiError(data.error || "The sync service could not complete that request.", response.status, data);
+  return data;
+}
+
+function setSyncState(kind, title, detail) {
+  $("#sync-state-title").textContent = title;
+  $("#sync-state-detail").textContent = detail;
+  $(".sync-state").dataset.state = kind;
+  $("#sync-status-button").dataset.state = kind;
+  $("#sync-mark-text").innerHTML = kind === "synced" ? "Encrypted sync<br>Up to date" : kind === "error" ? "Sync attention<br>Local copy is safe" : "Local only<br>Encrypted on this device";
+}
+
+function renderSyncAccount() {
+  els.syncAuthForm.hidden = state.sync.authenticated;
+  els.syncControls.hidden = !state.sync.authenticated;
+  $("#sync-account-email").textContent = state.sync.email;
+}
+
+function setSyncBusy(busy) {
+  state.sync.busy = busy;
+  ["#sync-login", "#sync-signup", "#sync-now", "#sync-signout", "#use-cloud-copy", "#keep-browser-copy"].forEach((selector) => {
+    const element = $(selector);
+    if (element) element.disabled = busy;
+  });
+}
+
+function showSyncMessage(message) {
+  const element = $("#sync-auth-message");
+  element.textContent = message;
+  element.hidden = !message;
+}
+
+function sameEnvelope(first, second) {
+  return Boolean(first && second && first.version === second.version && first.payload === second.payload && first.kdf?.salt === second.kdf?.salt && first.cipher?.iv === second.cipher?.iv);
+}
+
+async function fetchRemoteVault() {
+  return apiRequest("/api/vault", { method: "GET" });
+}
+
+async function uploadEnvelope(envelope, expectedRevision = state.sync.revision) {
+  const result = await apiRequest("/api/vault", { method: "PUT", body: JSON.stringify({ envelope, expectedRevision }) });
+  state.sync.revision = result.revision;
+  state.sync.remote = null;
+  els.syncConflict.hidden = true;
+  $("#sync-last-update").textContent = `Encrypted copy synchronized ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(result.updatedAt))}.`;
+  setSyncState("synced", "Encrypted copy synchronized", "This browser and your cloud copy match.");
+  return result;
+}
+
+function queueCloudUpload(envelope) {
+  if (!state.sync.authenticated) return;
+  state.sync.queue = state.sync.queue.then(async () => {
+    try { await uploadEnvelope(envelope); }
+    catch (error) {
+      if (error.status === 409) {
+        try {
+          state.sync.remote = (await fetchRemoteVault()).vault;
+          els.syncConflict.hidden = false;
+          setSyncState("error", "Sync choice required", "Another browser saved a different encrypted copy.");
+        } catch {
+          setSyncState("error", "Could not compare encrypted copies", "Your changes are safe in this browser. Use Sync now to retry.");
+        }
+      } else if (error.status === 401) {
+        state.sync.authenticated = false;
+        renderSyncAccount();
+        setSyncState("error", "Sync session expired", "Sign in again. Your local encrypted copy is safe.");
+      } else {
+        setSyncState("error", "Could not reach encrypted sync", "Your changes are safe in this browser. Use Sync now to retry.");
+      }
+    }
+  }).catch(() => setSyncState("error", "Could not reach encrypted sync", "Your changes are safe in this browser. Use Sync now to retry."));
+}
+
+async function useRemoteVault(remote) {
+  if (!remote?.envelope) throw new Error("No encrypted cloud vault is available.");
+  await dbPut(remote.envelope);
+  state.envelope = remote.envelope;
+  state.sync.revision = remote.revision;
+  state.sync.remote = null;
+  els.syncConflict.hidden = true;
+  clearSensitiveState();
+  els.app.hidden = true;
+  els.gate.hidden = false;
+  configureGate();
+  setSyncState("synced", "Encrypted cloud copy downloaded", "Enter its master password to unlock it on this browser.");
+  els.syncDialog.close();
+  els.master.focus();
+}
+
+async function reconcileSync({ prefer = "ask" } = {}) {
+  const response = await fetchRemoteVault();
+  const remote = response.vault;
+  if (!remote && state.envelope) return uploadEnvelope(state.envelope, 0);
+  if (remote && !state.envelope) return useRemoteVault(remote);
+  if (!remote && !state.envelope) {
+    setSyncState("synced", "Sync account connected", "Create a vault here and its encrypted copy will synchronize.");
+    return;
+  }
+  if (sameEnvelope(remote.envelope, state.envelope)) {
+    state.sync.revision = remote.revision;
+    els.syncConflict.hidden = true;
+    setSyncState("synced", "Encrypted copy synchronized", "This browser and your cloud copy match.");
+    return;
+  }
+  state.sync.remote = remote;
+  if (prefer === "cloud") return useRemoteVault(remote);
+  if (prefer === "browser") return uploadEnvelope(state.envelope, remote.revision);
+  els.syncConflict.hidden = false;
+  setSyncState("error", "Two encrypted copies differ", "Choose the cloud copy or this browser's copy below.");
+}
+
+async function checkSyncSession() {
+  try {
+    const session = await apiRequest("/api/auth", { method: "GET" });
+    state.sync.authenticated = session.authenticated;
+    state.sync.email = session.email || "";
+    renderSyncAccount();
+    if (session.authenticated) await reconcileSync();
+    else setSyncState("local", "Local encrypted vault", "Sign in to make the encrypted copy available in another browser.");
+  } catch {
+    setSyncState("local", "Local encrypted vault", "Cloud sync is unavailable here. The local vault still works.");
+  }
+}
+
+async function authenticateSync(action) {
+  showSyncMessage(""); setSyncBusy(true);
+  try {
+    const result = await apiRequest("/api/auth", {
+      method: "POST",
+      body: JSON.stringify({ action, email: $("#sync-email").value.trim(), password: $("#sync-password").value })
+    });
+    if (!result.authenticated) {
+      showSyncMessage(result.message || "Check your email, then return here to sign in.");
+      setSyncState("local", "Confirm your sync account", "Use the verification message sent to your email address.");
+      return;
+    }
+    state.sync.authenticated = true;
+    state.sync.email = result.email;
+    $("#sync-password").value = "";
+    renderSyncAccount();
+    await reconcileSync();
+  } catch (error) {
+    showSyncMessage(error.message);
+    setSyncState("error", "Could not sign in", "Check the details below and try again.");
+  } finally { setSyncBusy(false); }
 }
 
 function safeUrl(value) {
@@ -330,6 +493,7 @@ async function handleGateSubmit(event) {
       state.vault = blankVault();
       state.envelope = await encryptVault(state.vault, state.key, salt);
       await dbPut(state.envelope);
+      queueCloudUpload(state.envelope);
     }
     els.master.value = "";
     els.masterConfirm.value = "";
@@ -483,6 +647,36 @@ function bindEvents() {
   $("#open-site").addEventListener("click", () => { const entry = state.vault.entries.find((item) => item.id === state.selectedId); const url = safeUrl(entry?.url); if (url) window.open(url, "_blank", "noopener"); });
   $("#back-results").addEventListener("click", () => { els.workspace.dataset.mobileDetail = "false"; });
   $("#settings-button").addEventListener("click", () => els.settingsDialog.showModal());
+  ["#sync-at-gate", "#sync-status-button", "#open-sync-settings"].forEach((selector) => $(selector).addEventListener("click", () => {
+    els.settingsDialog.close();
+    renderSyncAccount();
+    els.syncDialog.showModal();
+    (state.sync.authenticated ? $("#sync-now") : $("#sync-email")).focus();
+  }));
+  $("#close-sync").addEventListener("click", () => els.syncDialog.close());
+  els.syncAuthForm.addEventListener("submit", (event) => { event.preventDefault(); authenticateSync("login"); });
+  $("#sync-signup").addEventListener("click", () => authenticateSync("signup"));
+  $("#sync-now").addEventListener("click", async () => {
+    setSyncBusy(true);
+    try { await reconcileSync(); showToast("Encrypted sync checked."); }
+    catch (error) { setSyncState("error", "Could not synchronize", "Your local encrypted copy is safe. Try again when online."); showToast(error.message); }
+    finally { setSyncBusy(false); }
+  });
+  $("#sync-signout").addEventListener("click", async () => {
+    setSyncBusy(true);
+    try { await apiRequest("/api/auth", { method: "POST", body: JSON.stringify({ action: "logout" }) }); }
+    catch { /* Clear the local session view even if the network is unavailable. */ }
+    state.sync = { authenticated: false, email: "", revision: 0, remote: null, busy: false, queue: Promise.resolve() };
+    els.syncConflict.hidden = true; renderSyncAccount();
+    setSyncState("local", "Signed out of encrypted sync", "The encrypted local copy remains on this browser.");
+  });
+  $("#use-cloud-copy").addEventListener("click", async () => {
+    setSyncBusy(true); try { await reconcileSync({ prefer: "cloud" }); } catch (error) { showToast(error.message); } finally { setSyncBusy(false); }
+  });
+  $("#keep-browser-copy").addEventListener("click", async () => {
+    setSyncBusy(true); try { await reconcileSync({ prefer: "browser" }); showToast("This browser's encrypted copy is now current."); } catch (error) { showToast(error.message); } finally { setSyncBusy(false); }
+  });
+  $("#cancel-conflict").addEventListener("click", () => els.syncDialog.close());
   $("#auto-lock-minutes").addEventListener("change", async (event) => { state.vault.settings.autoLockMinutes = Number(event.target.value); await persistVault(); resetActivity(); showToast("Auto-lock updated."); });
   $("#export-backup").addEventListener("click", exportBackup);
   ["#import-backup", "#import-at-gate"].forEach((selector) => $(selector).addEventListener("click", () => els.backupFile.click()));
@@ -503,7 +697,8 @@ async function init() {
     return;
   }
   state.envelope = await dbGet();
-  configureGate(); bindEvents(); els.master.focus();
+  configureGate(); bindEvents(); renderSyncAccount(); els.master.focus();
+  checkSyncSession();
 }
 
 init().catch(() => showGateError("Signal Desk could not open its local database."));
